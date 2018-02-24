@@ -14,7 +14,6 @@ from notebook.base.handlers import IPythonHandler
 
 # from https://stackoverflow.com/questions/38663666/how-can-i-serve-a-http-page-and-a-websocket-on-the-same-url-in-tornado
 class WebSocketHandlerMixin(websocket.WebSocketHandler):
-    
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # since my parent doesn't keep calling the super() constructor,
@@ -47,9 +46,8 @@ class WebSocketHandlerMixin(websocket.WebSocketHandler):
         super().get(*args, **kwargs)
 
 
-class RemoteProxyHandler(WebSocketHandlerMixin, IPythonHandler):
-    
-    def open(self, host, port, proxied_path=''):
+class LocalProxyHandler(WebSocketHandlerMixin, IPythonHandler):
+    def open(self, port, proxied_path=''):
         """
         Called when a client opens a websocket connection.
 
@@ -58,11 +56,11 @@ class RemoteProxyHandler(WebSocketHandlerMixin, IPythonHandler):
         """
         if not proxied_path.startswith('/'):
             proxied_path = '/' + proxied_path
-            client_uri = '{uri}:{port}{path}'.format(
-                uri='ws://'+host,
-                port=port,
-                path=proxied_path
-            )
+        client_uri = '{uri}:{port}{path}'.format(
+            uri='ws://127.0.0.1',
+            port=port,
+            path=proxied_path
+        )
         if self.request.query:
             client_uri += '?' + self.request.query
 
@@ -105,12 +103,12 @@ class RemoteProxyHandler(WebSocketHandlerMixin, IPythonHandler):
             self.ws.close()
 
     @web.authenticated
-    async def proxy(self, host, port, proxied_path):
+    async def proxy(self, port, proxied_path):
         '''
         While self.request.uri is
-            (hub)    /user/username/proxy/([a-z]+)/([0-9]+)/something.
-            (single) /proxy/([a-z]+)/([0-9]+)/something
-        This serverextension is given {host}/{port}/{everything/after}.
+            (hub)    /user/username/proxy/([0-9]+)/something.
+            (single) /proxy/([0-9]+)/something
+        This serverextension is given {port}/{everything/after}.
         '''
 
         if 'Proxy-Connection' in self.request.headers:
@@ -129,7 +127,7 @@ class RemoteProxyHandler(WebSocketHandlerMixin, IPythonHandler):
                 body = None
 
         client_uri = '{uri}:{port}{path}'.format(
-            uri='http://'+host,
+            uri='http://localhost',
             port=port,
             path=proxied_path
         )
@@ -165,46 +163,6 @@ class RemoteProxyHandler(WebSocketHandlerMixin, IPythonHandler):
                 self.write(response.body)
 
     # support all the methods that torando does by default!
-    async def http_get(self, host, port, proxy_path=''):
-        return await self.proxy(host, port, proxy_path)
-
-    def post(self, host, port, proxy_path=''):
-        return self.proxy(host, port, proxy_path)
-
-    def put(self, host, port, proxy_path=''):
-        return self.proxy(host, port, proxy_path)
-
-    def delete(self, host, port, proxy_path=''):
-        return self.proxy(host, port, proxy_path)
-
-    def head(self, host, port, proxy_path=''):
-        return self.proxy(host, port, proxy_path)
-
-    def patch(self, host, port, proxy_path=''):
-        return self.proxy(host, port, proxy_path)
-
-    def options(self, host, port, proxy_path=''):
-        return self.proxy(host, port, proxy_path)
-
-    def check_xsrf_cookie(self):
-        '''
-        http://www.tornadoweb.org/en/stable/guide/security.html
-
-        Defer to proxied apps.
-        '''
-        pass
-
-
-class LocalProxyHandler(RemoteProxyHandler):
-    
-    def open(self, port, proxied_path=''):
-        return super(LocalProxyHandler, self).open('127.0.0.1', port, proxied_path)
-
-    @web.authenticated
-    async def proxy(self, port, proxied_path):
-        return super(LocalProxyHandler, self).proxy('localhost', port, proxied_path)
-
-    # support all the methods that torando does by default!
     async def http_get(self, port, proxy_path=''):
         return await self.proxy(port, proxy_path)
 
@@ -225,6 +183,14 @@ class LocalProxyHandler(RemoteProxyHandler):
 
     def options(self, port, proxy_path=''):
         return self.proxy(port, proxy_path)
+
+    def check_xsrf_cookie(self):
+        '''
+        http://www.tornadoweb.org/en/stable/guide/security.html
+
+        Defer to proxied apps.
+        '''
+        pass
 
 
 class SuperviseAndProxyHandler(LocalProxyHandler):
@@ -371,7 +337,6 @@ class SuperviseAndProxyHandler(LocalProxyHandler):
 def setup_handlers(web_app):
     host_pattern = '.*$'
     web_app.add_handlers('.*', [
-        (url_path_join(web_app.settings['base_url'], r'/proxy/(\d+)(.*)'), LocalProxyHandler),
-        (url_path_join(web_app.settings['base_url'], r'/proxy/([^/]+)/(\d+)(.*)'), RemoteProxyHandler),
+        (url_path_join(web_app.settings['base_url'], r'/tunnel/(\d+)(.*)'), LocalProxyHandler)
     ])
 #vim: set et ts=4 sw=4:
